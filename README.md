@@ -15,30 +15,30 @@ To evaluate the project we will use the same pictures used in the paper and try 
 apani05/Mosaic_Generator (github.com)
 
 ### Schedule:
-May 1, 2023 - Proposal submission.
-May 8, 2023 - Outline code in github repository and have determined what functions can be used from OpenCV library and what algorithms we will have to write. 
-May 15, 2023 - Design submission week. 
+1. May 1, 2023 - Proposal submission.
+2. May 8, 2023 - Outline code in github repository and have determined what functions can be used from OpenCV library and what algorithms we will have to write. 
+3. May 15, 2023 - Design submission week. 
 Create outline for project paper. 
 Have code outlined with what functions we will use, what will be their input and output. 
-Will complete till non-maximum suppression on the scalar field, i.e. 40% of the code completely finished.
-May 22, 2023 - 
+We will complete till non-maximum suppression on the scalar field, i.e. 40% of the code completely finished.
+4. May 22, 2023 - 
 At least 40% of the paper will be completed with respect to introduction and background. 
 75% of the code will be finished.
-May 29, 2023 - 
+5. May 29, 2023 - 
 75% of the paper will be completed which includes some results, bibliography. 
 95% of code complete.
 Preliminary slides for presentation completed. 
-Jun 5, 2023 - Final code / Project demonstration
-Jun 7, 2023 - Code submission
+6. Jun 5, 2023 - Final code / Project demonstration
+7. Jun 7, 2023 - Code submission
 
 ### Any Code we will use or have found: 
 We are planning to implement the pseudo code from scratch but will use any code that applies in OpenCV and use code we find for reference or as a cited source if it is line for line. The following sites may be useful for implementing the code. 
 
 The paper uses Gradient Vector Flow to determine at what angle the tiles should be placed and there is some code for the GVF algorithm:
-Active Contours, Deformable Models, and Gradient Vector Flow (jhu.edu) [2] - there’s c code for the GVF algorithm. It has been added as a branch in github as reference: Mosaic_Generator/GVF.c at TabithaRoemish-Reference · apani05/Mosaic_Generator (github.com)
+*Active Contours, Deformable Models, and Gradient Vector Flow (jhu.edu) [2] - there’s c code for the GVF algorithm. It has been added as a branch in github as reference: Mosaic_Generator/GVF.c at TabithaRoemish-Reference · apani05/Mosaic_Generator (github.com)*
 
 The project paper also uses Robert’s Cross operator for edge detection and we were not able to find an equivalent in OpenCV, probably because it is sensitive to noise but as the paper called out, produces more visually appealing results:
-Python OpenCV - Roberts Edge Detection - GeeksforGeeks [3] - This python code shows how to implement the cross operator for edge detection so we could follow this general code in C++. 
+*Python OpenCV - Roberts Edge Detection - GeeksforGeeks [3] - This python code shows how to implement the cross operator for edge detection so we could follow this general code in C++.* 
 
 
 ### Bibliography:
