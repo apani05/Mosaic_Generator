@@ -1,4 +1,4 @@
-//code from https://iacl.ece.jhu.edu/Projects/gvf/ - this might be something we can use or use as reference for the GVF algorithm. 
+//code from https://iacl.ece.jhu.edu/Projects/gvf/ - this might be something we can use the GVF algorithm. 
 /* NOTE:
  * 
  * You must have "mex" command working in your matlab.  In matlab, 
