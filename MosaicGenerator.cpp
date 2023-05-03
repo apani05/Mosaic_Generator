@@ -10,10 +10,9 @@ using namespace cv;
 using namespace std;
 Mat calcLuminance(Mat image);
 Mat calcGradient(Mat image);
-Mat calcGVFMap(Mat image);
+Mat calcGVFField(Mat image);
 Mat calcNonMax(Mat image);
-Mat calcTileAngles(Mat image);
-Mat placeTiles(Mat image);
+Mat placeTiles(Mat image, Mat nonMax);
 
 
 //main
@@ -30,19 +29,17 @@ int main(int argc, char* argv[]) {
     // Step 3: Calculate Robert's gradient of the luminance image (add tile size?)
     Mat robert = calcGradient(luminance);
 
-    // Step 4: Calculate Gradient Vector Flow Map (add tile size?)
-    Mat gvf = calcGVFMap(robert);
+    // Step 4 - 5: Calculate Gradient Vector Flow Map (add tile size?)
+    Mat gvf = calcGVFField(robert);
 
-    // Step 5: Calculate NonMaximumSuppression
+    // Step 6: Calculate NonMaximumSuppression
     Mat nonMax = calcNonMax(gvf);
 
-    // Step 6: Calculate tile Angles  (add tile size ? )
-    Mat angleMap = calcTileAngles(nonMax);
+    // Step 7-23: Calculate tile Angles and place tiles  (add tile size ? )
+    Mat mosaic = placeTiles(image, nonMax);
 
-    // Step 7: Place tiles  (add tile size ? )
-    Mat mosaic = placeTiles(angleMap);
 
-    // Step 8: Display Images
+    // Display Images
     namedWindow("Input Image", WINDOW_NORMAL);
     imshow("Input Image", image);
     namedWindow("Luminance", WINDOW_NORMAL);
@@ -110,19 +107,60 @@ Mat calcGradient(Mat image)
 //calcGVFMap -  calculates the gradient vector flow for each tile
 //preconditions:
 //postconditions:
-Mat calcGVFMap(Mat image) {}
+Mat calcGVFField(Mat image) {
+    Mat gvf = Mat::zeros(image.size(), CV_8UC1);
+    //input roberts image
+    //loop over image and calculate the gradient field vector
+    //calculate the magnitude (u^2 + v^2)^1/2
+    //place that magnitude in the output image
+    return gvf;
+}
 
 //calcNonMax - calculates the non-maximum suppression for each tile
 //preconditions:
 //postconditions:
-Mat calcNonMax(Mat image) {}
+Mat calcNonMax(Mat image) {
+    Mat nonMax = Mat::zeros(image.size(), CV_8UC1);
 
-//calcTileAngles - calculate the angle for each tile
-//preconditions:
-//postconditions:
-Mat calcTileAngles(Mat image) {}
+    return nonMax;
+}
+
 
 //placeTiles - this final method creates the final mosaic image by placing the tiles according to the angleMap
 //preconditions:
 //postconditions:
-Mat placeTiles(Mat image) {}
+Mat placeTiles(Mat image, Mat nonMax) {
+    Mat mosaic = Mat::zeros(image.size(), CV_8UC3);
+    struct pixel
+    {
+        int x;
+        int y;
+        bool mark;
+    };
+    queue<pixel> Q;
+    float angleAlpha;
+    float angleBeta;
+    //add points to queue if above threshold
+    //sort queue desc
+    while (!Q.empty())
+    {
+        pixel p = Q.front();
+        if (p.mark == false) {
+            //angleAlpha = atan(u(i,j)/v(i,j)
+            //if(!checkOverlap(image, row, col, angle)
+              //place tile at angle, maybe use rotaterect?
+        }
+
+        Q.pop();
+    }
+    return mosaic;
+}
+
+//checkOverlap...not sure what this needs yet
+bool checkOverlap(Mat image, int pixRow, int pixCol, float angle) {
+    //return true if overlap
+    bool overlap = false;
+
+    return overlap;
+}
+
