@@ -117,11 +117,21 @@ Mat calcGVFField(Mat image) {
 }
 
 //calcNonMax - calculates the non-maximum suppression for each tile
-//preconditions:
-//postconditions:
+//preconditions: n/a
+//postconditions: outputs a mat image that has nonmaxsuppression edges detected
 Mat calcNonMax(Mat image) {
     Mat nonMax = Mat::zeros(image.size(), CV_8UC1);
-
+    vector<KeyPoint> keypoints;
+    int cols, rows = 0;
+    //uses nonmaxsuppression
+    Ptr<FastFeatureDetector> fast = FastFeatureDetector::create();
+    fast->detect(image, keypoints);
+    for (int i = 0; i < keypoints.size() - 1; i++)
+    {
+        cols = keypoints[i].pt.x;
+        rows = keypoints[i].pt.y;
+        nonMax.at<uchar>(rows, cols) = image.at<uchar>(rows, cols);
+    }
     return nonMax;
 }
 
