@@ -44,7 +44,7 @@ int main(int argc, char* argv[]) {
     Mat nonMax = calcNonMax(gvf);
 
     // Step 7-23: Calculate tile Angles and place tiles  (add tile size ? )
-    Mat mosaic = placeTiles(image, nonMax, &v, tileSize);
+    Mat mosaic = placeTiles(image, nonMax, &v, tilesize);
 
 
     // Display Images
@@ -358,42 +358,42 @@ void GVFC(int YN, int XN, double* f, double* ou, double* ov, double mu, int ITER
     pgFreeDmatrix(c2, 0, YN_1, 0, XN_1);
     pgFreeDmatrix(b, 0, YN_1, 0, XN_1);
 
-    }
+}
 
-    //placeTiles - this final method creates the final mosaic image by placing the tiles according to the angleMap
-    //preconditions:
-    //postconditions:
-    Mat placeTiles(Mat image, Mat nonMax, vector<Point>* v, int tileSize) {
-        Mat mosaic = Mat::zeros(image.size(), CV_8UC3);
-        struct pixel
-        {
-            int x;
-            int y;
-            bool mark;
-        };
-        queue<pixel> Q;
-        float angleAlpha;
-        float angleBeta;
-        //add points to queue if above threshold
-        //sort queue desc
-        while (!Q.empty())
-        {
-            pixel p = Q.front();
-            if (p.mark == false) {
-                //angleAlpha = atan(u(i,j)/v(i,j)
-                //if(!checkOverlap(image, row, col, angle)
-                  //place tile at angle, maybe use rotaterect?
-            }
-
-            Q.pop();
+//placeTiles - this final method creates the final mosaic image by placing the tiles according to the angleMap
+//preconditions:
+//postconditions:
+Mat placeTiles(Mat image, Mat nonMax, vector<Point>* v, int tileSize) {
+    Mat mosaic = Mat::zeros(image.size(), CV_8UC3);
+    struct pixel
+    {
+        int x;
+        int y;
+        bool mark;
+    };
+    queue<pixel> Q;
+    float angleAlpha;
+    float angleBeta;
+    //add points to queue if above threshold
+    //sort queue desc
+    while (!Q.empty())
+    {
+        pixel p = Q.front();
+        if (p.mark == false) {
+            //angleAlpha = atan(u(i,j)/v(i,j)
+            //if(!checkOverlap(image, row, col, angle)
+                //place tile at angle, maybe use rotaterect?
         }
-        return mosaic;
-    }
 
-    //checkOverlap...not sure what this needs yet
-    bool checkOverlap(Mat image, int pixRow, int pixCol, float angle) {
-        //return true if overlap
-        bool overlap = false;
-
-        return overlap;
+        Q.pop();
     }
+    return mosaic;
+}
+
+//checkOverlap...not sure what this needs yet
+bool checkOverlap(Mat image, int pixRow, int pixCol, float angle) {
+    //return true if overlap
+    bool overlap = false;
+
+    return overlap;
+}
