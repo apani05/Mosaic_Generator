@@ -10,15 +10,18 @@ using namespace cv;
 using namespace std;
 Mat calcLuminance(Mat image);
 Mat calcGradient(Mat image);
-Mat calcGVFField(Mat image);
+Mat calcGVFField(Mat image, vector<Point>* v);
 Mat calcNonMax(Mat image);
-Mat placeTiles(Mat image, Mat nonMax);
+Mat placeTiles(Mat image, Mat nonMax, vector<Point>* v, int tsize);
 
 
 //main
 //preconditions:
 //postconditions:
 int main(int argc, char* argv[]) {
+
+    vector<Point> v;
+    int tilesize = 1; // 1 pixel X 1 pixel
 
     // Step 1: Read an input image from directory
     Mat image = imread("sqrl.jpg");
@@ -30,13 +33,13 @@ int main(int argc, char* argv[]) {
     Mat robert = calcGradient(luminance);
 
     // Step 4 - 5: Calculate Gradient Vector Flow Map (add tile size?)
-    Mat gvf = calcGVFField(robert);
+    Mat gvf = calcGVFField(robert, &v);
 
     // Step 6: Calculate NonMaximumSuppression
     Mat nonMax = calcNonMax(gvf);
 
     // Step 7-23: Calculate tile Angles and place tiles  (add tile size ? )
-    Mat mosaic = placeTiles(image, nonMax);
+    Mat mosaic = placeTiles(image, nonMax, &v, tileSize);
 
 
     // Display Images
@@ -107,7 +110,7 @@ Mat calcGradient(Mat image)
 //calcGVFMap -  calculates the gradient vector flow for each tile
 //preconditions:
 //postconditions:
-Mat calcGVFField(Mat image) {
+Mat calcGVFField(Mat image, vector<Point>* v) {
     Mat gvf = Mat::zeros(image.size(), CV_8UC1);
     //input roberts image
     //loop over image and calculate the gradient field vector
@@ -121,17 +124,48 @@ Mat calcGVFField(Mat image) {
 //postconditions: outputs a mat image that has nonmaxsuppression edges detected
 Mat calcNonMax(Mat image) {
     Mat nonMax = Mat::zeros(image.size(), CV_8UC1);
-    vector<KeyPoint> keypoints;
-    int cols, rows = 0;
-    //uses nonmaxsuppression
-    Ptr<FastFeatureDetector> fast = FastFeatureDetector::create();
-    fast->detect(image, keypoints);
-    for (int i = 0; i < keypoints.size() - 1; i++)
+    Mat mag, angle = Mat::zeros(image.size(), CV_32F);
+    const int direction = 22.5;
+    float p1, p2;
+    Mat input;
+    image.convertTo(input, CV_32F);
+    cartToPolar(input, input, mag, angle, true);
+    for (int i = 1; i < input.rows - 1; i++)
     {
-        cols = keypoints[i].pt.x;
-        rows = keypoints[i].pt.y;
-        nonMax.at<uchar>(rows, cols) = image.at<uchar>(rows, cols);
+        for (int j = 1; j < input.cols - 1; j++)
+        {
+            if ((angle.at<float>(i, j) >= 0 && angle.at<float>(i, j) < direction) ||
+                (angle.at<float>(i, j) <= direction * 7 && angle.at<float>(i, j) <= direction * 8) ||
+                (angle.at<float>(i, j) < 0 && angle.at<float>(i, j) >= direction * -1) ||
+                (angle.at<float>(i, j) >= direction * -8 && angle.at<float>(i, j) < direction * -7))
+            {//horizontal
+                p1 = mag.at<float>(i, j + 1);
+                p2 = mag.at<float>(i, j - 1);
+            }
+            else if ((angle.at<float>(i, j) >= direction && angle.at<float>(i, j) < direction * 3) ||
+                (angle.at<float>(i, j) >= direction * -7 && angle.at<float>(i, j) < direction * -5))
+            {//diagonal 45
+                p1 = mag.at<float>(i + 1, j + 1);
+                p2 = mag.at<float>(i - 1, j - 1);
+            }
+            else if ((angle.at<float>(i, j) >= direction * 3 && angle.at<float>(i, j) < direction * 5) ||
+                (angle.at<float>(i, j) >= direction * -5 && angle.at<float>(i, j) < direction * -3))
+            {//vertical
+                p1 = mag.at<float>(i + 1, j);
+                p2 = mag.at<float>(i - 1, j);
+            }
+            else //diagonal 135
+            {
+                p1 = mag.at<float>(i + 1, j - 1);
+                p2 = mag.at<float>(i - 1, j + 1);
+            }
+            if (mag.at<float>(i, j) >= p1 && mag.at<float>(i, j) >= p2)
+                nonMax.at<uchar>(i, j) = mag.at<float>(i, j);
+            else
+                nonMax.at<uchar>(i, j) = 0;
+        }
     }
+
     return nonMax;
 }
 
@@ -139,7 +173,7 @@ Mat calcNonMax(Mat image) {
 //placeTiles - this final method creates the final mosaic image by placing the tiles according to the angleMap
 //preconditions:
 //postconditions:
-Mat placeTiles(Mat image, Mat nonMax) {
+Mat placeTiles(Mat image, Mat nonMax, vector<Point>* v, int tileSize) {
     Mat mosaic = Mat::zeros(image.size(), CV_8UC3);
     struct pixel
     {
