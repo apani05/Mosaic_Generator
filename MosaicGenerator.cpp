@@ -8,23 +8,27 @@
 #include <vector>
 #include <cmath>
 
+#include <iostream>
+enum { red, green, blue };
 using namespace cv;
 using namespace std;
-
-typedef double PGdouble;
-
 Mat calcLuminance(Mat image);
 Mat calcGradient(Mat image);
-Mat calcGVFField(Mat image, vector<Point>* v);
+Mat calcGVFField(Mat image, vector<Point>* u, vector<Point>* v, int tileSize);
 Mat calcNonMax(Mat image);
-Mat placeTiles(Mat image, Mat nonMax, vector<Point>* v, int tsize);
+Mat placeTiles(Mat image, Mat nonMax, vector<Point>* u, vector<Point>* v, int tileSize);
+bool checkOverlap(RotatedRect tile, vector<vector<RotatedRect>>* map);
+void layTile(Mat image, Mat mosaic, Rect area, double angle);
+void displayImage(string name, Mat image);
+Mat fillTileCommonColor(Mat in);
 
 
 //main
 //preconditions:
 //postconditions:
 int main(int argc, char* argv[]) {
-
+    
+    vector<Point> u;
     vector<Point> v;
     int tilesize = 1; // 1 pixel X 1 pixel
 
@@ -48,22 +52,27 @@ int main(int argc, char* argv[]) {
 
 
     // Display Images
-    namedWindow("Input Image", WINDOW_NORMAL);
-    imshow("Input Image", image);
-    namedWindow("Luminance", WINDOW_NORMAL);
-    imshow("Luminance", luminance);
-    namedWindow("Gradient", WINDOW_NORMAL);
-    imshow("Gradient", robert);
-    //namedWindow("GVF", WINDOW_NORMAL);
-    //imshow("GVF", gvf);
-    //namedWindow("nonMax", WINDOW_NORMAL);
-    //imshow("nonMax", nonMax);
-    //namedWindow("angleMap", WINDOW_NORMAL);
-    //imshow("angleMap", angleMap);
-    //namedWindow("mosaic", WINDOW_NORMAL);
-    //imshow("mosaic", mosaic);
+    // Display Images
+    displayImage("Input Image", image);
+    displayImage("Luminance", luminance);
+    displayImage("Gradient", robert);
+    displayImage("GVF", gvf);
+    displayImage("nonMax", nonMax);
+    displayImage("mosaic", mosaic);
+    waitKey(0);
+    // save image and end
+    imwrite("MosaicFinalImage.jpg", nonMax); // add mosaic when other methods completed
     waitKey(0);
     return 0;
+}
+
+void displayImage(string name, Mat image)
+{
+    int height = image.size().height;
+    int width = image.size().width;
+    namedWindow(name, WINDOW_NORMAL);
+    resizeWindow(name, image.cols, image.rows);
+    imshow(name, image);
 }
 
 // Function to calculate the luminance of an image
@@ -364,29 +373,40 @@ void GVFC(int YN, int XN, double* f, double* ou, double* ov, double mu, int ITER
 //preconditions:
 //postconditions:
 Mat placeTiles(Mat image, Mat nonMax, vector<Point>* v, int tileSize) {
+    int threshold_h = 1;
+    int threshold_l = 2;
     Mat mosaic = Mat::zeros(image.size(), CV_8UC3);
-    struct pixel
-    {
-        int x;
-        int y;
-        bool mark;
-    };
-    queue<pixel> Q;
-    float angleAlpha;
+    Mat marked = Mat::zeros(image.size(), CV_8UC1);
+
+    queue<Point> Q;
+    float angleAlpha = 30;
     float angleBeta;
-    //add points to queue if above threshold
-    //sort queue desc
+    //-------------------
+    Size mosaicSize(tileSize, tileSize);  // Set the desired mosaic size
+    int numTilesX = image.cols / mosaicSize.width;
+    int numTilesY = image.rows / mosaicSize.height;
+
+    vector<vector<RotatedRect>> tileMap(numTilesX, vector<RotatedRect>(numTilesY));
+
+    cv::Mat mosaicImage(image.size(), image.type(), cv::Scalar(0));
+
+    // for remaining points
+    for (int i = 0; i < numTilesY; ++i) {
+        for (int j = 0; j < numTilesX; ++j) {
+            Rect tileRect(j * mosaicSize.width, i * mosaicSize.height, mosaicSize.width, mosaicSize.height);
+            //create rotatedRect, checkOverlap(RotatedRect proposedTile, vector<vector<RotatedRect>>* tileMap);
+            Point center = tileRect.br() + tileRect.tl() * 0.5;
+            RotatedRect rRect(center, mosaicSize, angleAlpha);
+            layTile(image, mosaic, tileRect, angleAlpha);
+        }
+    }
+
     while (!Q.empty())
     {
-        pixel p = Q.front();
-        if (p.mark == false) {
-            //angleAlpha = atan(u(i,j)/v(i,j)
-            //if(!checkOverlap(image, row, col, angle)
-                //place tile at angle, maybe use rotaterect?
-        }
-
         Q.pop();
     }
+
+
     return mosaic;
 }
 
@@ -396,4 +416,81 @@ bool checkOverlap(Mat image, int pixRow, int pixCol, float angle) {
     bool overlap = false;
 
     return overlap;
+}
+
+void layTile(Mat image, Mat mosaic, Rect area, double angle)
+{
+    int size = area.height; //using squares, could also use length
+    Mat rotatedTile;
+
+    Mat tile = image(area);
+    tile = fillTileCommonColor(tile);
+    //displayImage("original", image);
+    //displayImage("tile", tile);
+    Point tileCenter(tile.cols / 2, tile.rows / 2);
+    float rotatedSize = size * sqrt(2);
+    Mat rotation_matrix = getRotationMatrix2D(tileCenter, angle, 1); //resize for rotation - size/rotatedSize
+    warpAffine(tile, rotatedTile, rotation_matrix, tile.size(), cv::INTER_LINEAR, cv::BORDER_CONSTANT, cv::Scalar(0));
+    //displayImage("rotatedTile", rotatedTile);
+    //waitKey(0);
+    rotatedTile.copyTo(mosaic(area));
+}
+
+// fillTileCommonColor - loops through image and finds the most common color
+// preconditions: assumes image is in color
+// postconditions: returns Matt filled with common color
+Mat fillTileCommonColor(Mat in)
+{
+    int const bins = 4;
+    Vec3b color;
+    const int buckets = (bins % 2 != 0) ? bins * 2 : bins; // ensure bin is multple of 2
+    int dims[] = { buckets, buckets, buckets };
+    Mat hist(3, dims, CV_32S, Scalar::all(0)); // 3D histogram initialized to zero
+    int bucketSize = 256 / buckets;
+    int x, y, z;
+
+    //fill histogram
+    Mat result = in.clone();
+    for (int r = 0; r < result.rows; r++) {
+        for (int c = 0; c < result.cols; c++) {
+            color = in.at<Vec3b>(r, c); //get color
+            int num = *result.ptr<uchar>(c);
+            x = color[red] / bucketSize;
+            y = color[green] / bucketSize;
+            z = color[blue] / bucketSize;
+            //increase bin in histogram
+            hist.at<int>(x, y, z) = hist.at<int>(x, y, z) + 1;
+        }
+    }
+
+    // get color with highest # of bin votes
+    int most = 0;
+    std::vector<int> winner = { 0, 0, 0 };
+    for (int l = 0; l <= 3; l++) {
+        for (int w = 0; w <= 3; w++) {
+            for (int h = 0; h <= 3; h++)
+            {
+                if (most < hist.at<int>(l, w, h))
+                {
+                    most = hist.at<int>(l, w, h);
+                    winner = { l, w, h };
+                }
+            }
+        }
+    }
+
+    int cRed = winner[red] * bucketSize + bucketSize / 2;
+    int cGreen = winner[green] * bucketSize + bucketSize / 2;
+    int cBlue = winner[blue] * bucketSize + bucketSize / 2;
+
+    color = { saturate_cast<uchar>(cRed), saturate_cast<uchar>(cGreen), saturate_cast<uchar>(cBlue) };
+
+    //fill tile with common color
+    Mat newTile = Mat::zeros(in.size(), CV_8UC3);
+    for (int r = 0; r < in.rows; r++) {
+        for (int c = 0; c < in.cols; c++) {
+            newTile.at<Vec3b>(r, c) = color;
+        }
+    }
+    return newTile;
 }
