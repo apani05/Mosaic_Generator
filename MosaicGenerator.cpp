@@ -21,7 +21,7 @@ bool checkOverlap(RotatedRect tile, vector<vector<RotatedRect>>* map);
 void layTile(Mat image, Mat mosaic, Rect area, double angle);
 void displayImage(string name, Mat image);
 Mat fillTileCommonColor(Mat in);
-
+Mat fillAvgColor(Mat tile);
 
 //main
 //preconditions:
@@ -424,7 +424,8 @@ void layTile(Mat image, Mat mosaic, Rect area, double angle)
     Mat rotatedTile;
 
     Mat tile = image(area);
-    tile = fillTileCommonColor(tile);
+    //tile = fillTileCommonColor(tile);
+    tile = fillAvgColor(tile);
     //displayImage("original", image);
     //displayImage("tile", tile);
     Point tileCenter(tile.cols / 2, tile.rows / 2);
@@ -434,6 +435,16 @@ void layTile(Mat image, Mat mosaic, Rect area, double angle)
     //displayImage("rotatedTile", rotatedTile);
     //waitKey(0);
     rotatedTile.copyTo(mosaic(area));
+}
+//fillAvgColor - fills the tile with the average color of the tile. 
+//preconditions: image should be in color
+//postconditions: returns mat filled with average color of tile
+Mat fillAvgColor(Mat tile)
+{
+    Mat temp = Mat::zeros(tile.size(), CV_8UC3);
+    Scalar avgColor = mean(tile);
+    temp = Scalar(avgColor);
+    return temp;
 }
 
 // fillTileCommonColor - loops through image and finds the most common color
