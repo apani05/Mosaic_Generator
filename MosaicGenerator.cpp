@@ -4,54 +4,56 @@
 #include <opencv2/opencv.hpp>
 #include <opencv2/core/core.hpp>
 #include <opencv2/imgproc/imgproc.hpp>
-#include <iostream>
-#include <vector>
-#include <cmath>
-
+#include <opencv2/imgproc.hpp>
+#include <queue>
+//#include <opencv2/features2d.hpp>
 #include <iostream>
 enum { red, green, blue };
 using namespace cv;
 using namespace std;
 Mat calcLuminance(Mat image);
 Mat calcGradient(Mat image);
-Mat calcGVFField(Mat image, vector<Point>* u, vector<Point>* v, int tileSize);
+Mat calcGVFField(Mat image, Mat gx, Mat gy);
 Mat calcNonMax(Mat image);
-Mat placeTiles(Mat image, Mat nonMax, vector<Point>* u, vector<Point>* v, int tileSize);
-bool checkOverlap(RotatedRect tile, vector<vector<RotatedRect>>* map);
-void layTile(Mat image, Mat mosaic, Rect area, double angle);
+Mat placeTiles(Mat image, Mat nonMax, Mat gx, Mat gy, int tileSize);
+//helper methods
+void setTile(RotatedRect rRect, Mat image, Mat mosaic);
+bool checkPlacementOk(RotatedRect tile, vector<vector<RotatedRect>>& map, Size mapSize, Point mapLoc);
+Point getPerpendicularTile(RotatedRect rRect, int direction, Size s);
 void displayImage(string name, Mat image);
-Mat fillTileCommonColor(Mat in);
+Scalar getStylizedColor(Mat in);
+float getAvgVal(Mat tile);
+void getVertices(Point* arr, RotatedRect rRect);
 
 
-//main
-//preconditions:
-//postconditions:
+
+//main - main program reads in an image and outputs a mosaic-ized image
+//preconditions: image must be in same directory
+//postconditions: image is saved in same directory as code
 int main(int argc, char* argv[]) {
-    
-    vector<Point> u;
-    vector<Point> v;
-    int tilesize = 1; // 1 pixel X 1 pixel
 
     // Step 1: Read an input image from directory
-    Mat image = imread("lena.jpg");
+    Mat image = imread("lena.jpg"); //VAnne.jpg, sqrl.jpg
+    resize(image, image, Size(667, 667)); //for lena image
 
     // Step 2: Calculate the luminance of the image
     Mat luminance = calcLuminance(image);
-    
-    // Step 3: Calculate Robert's gradient of the luminance image (add tile size?)
+
+    // Step 3: Calculate Robert's gradient of the luminance image 
     Mat robert = calcGradient(luminance);
 
-    // Step 4 - 5: Calculate Gradient Vector Flow Map (add tile size?)
-    Mat gvf = calcGVFField(robert, &v);
+    // Step 4 - 5: Calculate Gradient Vector Flow Map (might need size)
+    Mat gx = Mat::zeros(image.size(), CV_8UC1);
+    Mat gy = Mat::zeros(image.size(), CV_8UC1);
+    Mat gvf = calcGVFField(robert, gx, gy);
 
     // Step 6: Calculate NonMaximumSuppression
     Mat nonMax = calcNonMax(gvf);
 
-    // Step 7-23: Calculate tile Angles and place tiles  (add tile size ? )
-    Mat mosaic = placeTiles(image, nonMax, &v, tilesize);
+    // Step 7-23: Calculate tile Angles and place tiles  
+    int const tilesize = 5; // 1 pixel X 1 pixel
+    Mat mosaic = placeTiles(image, nonMax, gx, gy, tilesize);
 
-
-    // Display Images
     // Display Images
     displayImage("Input Image", image);
     displayImage("Luminance", luminance);
@@ -61,15 +63,12 @@ int main(int argc, char* argv[]) {
     displayImage("mosaic", mosaic);
     waitKey(0);
     // save image and end
-    imwrite("MosaicFinalImage.jpg", nonMax); // add mosaic when other methods completed
-    waitKey(0);
+    imwrite("MosaicFinalImage.jpg", mosaic);
     return 0;
 }
 
 void displayImage(string name, Mat image)
 {
-    int height = image.size().height;
-    int width = image.size().width;
     namedWindow(name, WINDOW_NORMAL);
     resizeWindow(name, image.cols, image.rows);
     imshow(name, image);
@@ -124,18 +123,38 @@ Mat calcGradient(Mat image)
 //calcGVFMap -  calculates the gradient vector flow for each tile
 //preconditions:
 //postconditions:
-Mat calcGVFField(Mat image, vector<Point>* v) {
+Mat calcGVFField(Mat image, Mat gx, Mat gy) {
     Mat gvf = Mat::zeros(image.size(), CV_8UC1);
-    //input roberts image
-    //loop over image and calculate the gradient field vector
-    //calculate the magnitude (u^2 + v^2)^1/2
-    //place that magnitude in the output image
+    int ddepth = CV_8UC1;
+    int scale = 1;
+    int delta = 0;
+    Mat mygx = Mat::zeros(image.size(), CV_8UC3);
+    Mat mygy = Mat::zeros(image.size(), CV_8UC3);
+    Scharr(image, gx, ddepth, 1, 0, scale);
+    Scharr(image, gy, ddepth, 0, 1, scale);
+
+
+    for (int i = 0; i < image.rows; i++) {
+        for (int j = 0; j < image.cols; j++) {
+            Scalar xval = gx.at<uchar>(i, j); // Notice <uchar> not float
+            Scalar yval = gy.at<uchar>(i, j);
+            float xx = xval.val[0];
+            float yy = yval.val[0];
+            gvf.at<uchar>(i, j) = (xval.val[0], yval.val[0]);
+            //mygx.at<uchar>(i, j) = (xval.val[0], yval.val[0]);
+        }
+    }
+    //displayImage("gx", gx);
+    //displayImage("gy", gy);
+    //displayImage("gvf", gvf);
+    //waitKey(0);
+
     return gvf;
 }
 
 //calcNonMax - calculates the non-maximum suppression for each tile
-//preconditions: n/a
-//postconditions: outputs a mat image that has nonmaxsuppression edges detected
+//preconditions:
+//postconditions:
 Mat calcNonMax(Mat image) {
     Mat nonMax = Mat::zeros(image.size(), CV_8UC1);
     Mat mag, angle = Mat::zeros(image.size(), CV_32F);
@@ -183,266 +202,306 @@ Mat calcNonMax(Mat image) {
     return nonMax;
 }
 
-PGdouble** pgDmatrix(int nrl, int nrh, int ncl, int nch)
-{
-    int j;
-    long bufsize, bufptr;
-    PGdouble** m;
-
-    bufsize = (nrh - nrl + 1) * sizeof(PGdouble*) + (nrh - nrl + 1) * (nch - ncl + 1) * sizeof(PGdouble);
-
-    m = (PGdouble**)malloc(bufsize);
-    m -= nrl;
-
-    bufptr = ((long)(m + nrl)) + (nrh - nrl + 1) * sizeof(PGdouble*);
-    for (j = nrl; j <= nrh; j++)
-    {
-        m[j] = ((PGdouble*)(bufptr + (j - nrl) * (nch - ncl + 1) * sizeof(PGdouble)));
-        m[j] -= ncl;
-    }
-
-    return m;
-}
-
-void pgFreeDmatrix(PGdouble** m, int nrl, int nrh, int ncl, int nch)
-{
-    free((char*)(m + nrl));
-}
-
-void GVFC(int YN, int XN, double* f, double* ou, double* ov, double mu, int ITER)
-{
-    double mag2, temp, tempx, tempy, fmax, fmin;
-    int count, x, y, XN_1, XN_2, YN_1, YN_2;
-
-    PGdouble** fx, ** fy, ** u, ** v, ** Lu, ** Lv, ** g, ** c1, ** c2, ** b;
-
-    // define constants and create row-major double arrays
-    XN_1 = XN - 1;
-    XN_2 = XN - 2;
-    YN_1 = YN - 1;
-    YN_2 = YN - 2;
-    fx = pgDmatrix(0, YN_1, 0, XN_1);
-    fy = pgDmatrix(0, YN_1, 0, XN_1);
-    u = pgDmatrix(0, YN_1, 0, XN_1);
-    v = pgDmatrix(0, YN_1, 0, XN_1);
-    Lu = pgDmatrix(0, YN_1, 0, XN_1);
-    Lv = pgDmatrix(0, YN_1, 0, XN_1);
-    g = pgDmatrix(0, YN_1, 0, XN_1);
-    c1 = pgDmatrix(0, YN_1, 0, XN_1);
-    c2 = pgDmatrix(0, YN_1, 0, XN_1);
-    b = pgDmatrix(0, YN_1, 0, XN_1);
-
-    // Normalize the edge map to [0,1]
-    fmax = -1e10;
-    fmin = 1e10;
-    for (x = 0; x <= YN * XN - 1; x++) {
-        fmax = std::max(fmax, f[x]);
-        fmin = std::min(fmin, f[x]);
-    }
-
-    if (fmax == fmin)
-        std::cout << "Edge map is a constant image." << std::endl;
-
-    for (x = 0; x <= YN * XN - 1; x++)
-        f[x] = (f[x] - fmin) / (fmax - fmin);
-
-        /**************** II: Compute edge map gradient *****************/
-    /* I.1: Neumann boundary condition:
-     *      zero normal derivative at boundary
-     */
-     /* Deal with corners */
-    fx[0][0] = fy[0][0] = fx[0][XN_1] = fy[0][XN_1] = 0;
-    fx[YN_1][XN_1] = fy[YN_1][XN_1] = fx[YN_1][0] = fy[YN_1][0] = 0;
-
-    /* Deal with left and right column */
-    for (y = 1; y <= YN_2; y++) {
-        fx[y][0] = fx[y][XN_1] = 0;
-        fy[y][0] = 0.5 * (f[y + 1] - f[y - 1]);
-        fy[y][XN_1] = 0.5 * (f[y + 1 + XN_1 * YN] - f[y - 1 + XN_1 * YN]);
-    }
-
-    /* Deal with top and bottom row */
-    for (x = 1; x <= XN_2; x++) {
-        fy[0][x] = fy[YN_1][x] = 0;
-        fx[0][x] = 0.5 * (f[(x + 1) * YN] - f[(x - 1) * YN]);
-        fx[YN_1][x] = 0.5 * (f[YN_1 + (x + 1) * YN] - f[YN_1 + (x - 1) * YN]);
-    }
-
-    /* I.2: Compute interior derivative using central difference */
-    for (y = 1; y <= YN_2; y++)
-        for (x = 1; x <= XN_2; x++) {
-            /* NOTE: f is stored in column major */
-            fx[y][x] = 0.5 * (f[y + (x + 1) * YN] - f[y + (x - 1) * YN]);
-            fy[y][x] = 0.5 * (f[y + 1 + x * YN] - f[y - 1 + x * YN]);
-        }
-
-    /******* III: Compute parameters and initializing arrays **********/
-    temp = -1.0 / (mu * mu);
-    for (y = 0; y <= YN_1; y++)
-        for (x = 0; x <= XN_1; x++) {
-            tempx = fx[y][x];
-            tempy = fy[y][x];
-            /* initial GVF vector */
-            u[y][x] = tempx;
-            v[y][x] = tempy;
-            /* gradient magnitude square */
-            mag2 = tempx * tempx + tempy * tempy;
-
-            g[y][x] = mu;
-            b[y][x] = mag2;
-
-            c1[y][x] = b[y][x] * tempx;
-            c2[y][x] = b[y][x] * tempy;
-        }
-
-    /* free memory of fx and fy */
-    pgFreeDmatrix(fx, 0, YN_1, 0, XN_1);
-    pgFreeDmatrix(fy, 0, YN_1, 0, XN_1);
-
-    /************* Solve GVF = (u,v) iteratively ***************/
-    for (count = 1; count <= ITER; count++) {
-        /* IV: Compute Laplace operator using Neuman condition */
-        /* IV.1: Deal with corners */
-        Lu[0][0] = (u[0][1] + u[1][0]) * 0.5 - u[0][0];
-        Lv[0][0] = (v[0][1] + v[1][0]) * 0.5 - v[0][0];
-        Lu[0][XN_1] = (u[0][XN_2] + u[1][XN_1]) * 0.5 - u[0][XN_1];
-        Lv[0][XN_1] = (v[0][XN_2] + v[1][XN_1]) * 0.5 - v[0][XN_1];
-        Lu[YN_1][0] = (u[YN_1][1] + u[YN_2][0]) * 0.5 - u[YN_1][0];
-        Lv[YN_1][0] = (v[YN_1][1] + v[YN_2][0]) * 0.5 - v[YN_1][0];
-        Lu[YN_1][XN_1] = (u[YN_1][XN_2] + u[YN_2][XN_1]) * 0.5 - u[YN_1][XN_1];
-        Lv[YN_1][XN_1] = (v[YN_1][XN_2] + v[YN_2][XN_1]) * 0.5 - v[YN_1][XN_1];
-
-        /* IV.2: Deal with left and right columns */
-        for (y = 1; y <= YN_2; y++) {
-            Lu[y][0] = (2 * u[y][1] + u[y - 1][0] + u[y + 1][0]) * 0.25 - u[y][0];
-            Lv[y][0] = (2 * v[y][1] + v[y - 1][0] + v[y + 1][0]) * 0.25 - v[y][0];
-            Lu[y][XN_1] = (2 * u[y][XN_2] + u[y - 1][XN_1] + u[y + 1][XN_1]) * 0.25 - u[y][XN_1];
-            Lv[y][XN_1] = (2 * v[y][XN_2] + v[y - 1][XN_1] + v[y + 1][XN_1]) * 0.25 - v[y][XN_1];
-        }
-        /* IV.3: Deal with top and bottom rows */
-        for (x = 1; x <= XN_2; x++) {
-            Lu[0][x] = (2 * u[1][x] + u[0][x - 1] + u[0][x + 1]) * 0.25 - u[0][x];
-            Lv[0][x] = (2 * v[1][x] + v[0][x - 1] + v[0][x + 1]) * 0.25 - v[0][x];
-            Lu[YN_1][x] = (2 * u[YN_2][x] + u[YN_1][x - 1] + u[YN_1][x + 1]) * 0.25 - u[YN_1][x];
-            Lv[YN_1][x] = (2 * v[YN_2][x] + v[YN_1][x - 1] + v[YN_1][x + 1]) * 0.25 - v[YN_1][x];
-        }
-
-        /* IV.4: Compute interior */
-        for (y = 1; y <= YN_2; y++) {
-            for (x = 1; x <= XN_2; x++) {
-                Lu[y][x] = (u[y][x - 1] + u[y][x + 1] + u[y - 1][x] + u[y + 1][x]) * 0.25 - u[y][x];
-                Lv[y][x] = (v[y][x - 1] + v[y][x + 1] + v[y - 1][x] + v[y + 1][x]) * 0.25 - v[y][x];
-            }
-        }
-
-        /******** V: Update GVF ************/
-        for (y = 0; y <= YN_1; y++) {
-            for (x = 0; x <= XN_1; x++) {
-                temp = u[y][x];
-                    u[y][x] += Lu[y][x];
-                    Lu[y][x] = temp;
-
-                    temp = v[y][x];
-                    v[y][x] += Lv[y][x];
-                    Lv[y][x] = temp;
-            }
-        }
-    }
-
-    /********** VI: Normalize the GVF ***********/
-    for (y = 0; y <= YN_1; y++) {
-        for (x = 0; x <= XN_1; x++) {
-            ou[x * YN + y] = u[y][x];
-            ov[x * YN + y] = v[y][x];
-        }
-    }
-
-    /********** VII: Free memory ***********/
-    pgFreeDmatrix(u, 0, YN_1, 0, XN_1);
-    pgFreeDmatrix(v, 0, YN_1, 0, XN_1);
-    pgFreeDmatrix(Lu, 0, YN_1, 0, XN_1);
-    pgFreeDmatrix(Lv, 0, YN_1, 0, XN_1);
-    pgFreeDmatrix(g, 0, YN_1, 0, XN_1);
-    pgFreeDmatrix(c1, 0, YN_1, 0, XN_1);
-    pgFreeDmatrix(c2, 0, YN_1, 0, XN_1);
-    pgFreeDmatrix(b, 0, YN_1, 0, XN_1);
-
-}
-
 //placeTiles - this final method creates the final mosaic image by placing the tiles according to the angleMap
 //preconditions:
 //postconditions:
-Mat placeTiles(Mat image, Mat nonMax, vector<Point>* v, int tileSize) {
-    int threshold_h = 1;
-    int threshold_l = 2;
-    Mat mosaic = Mat::zeros(image.size(), CV_8UC3);
-    Mat marked = Mat::zeros(image.size(), CV_8UC1);
+Mat placeTiles(Mat image, Mat nonMax, Mat gx, Mat gy, int tileSize) {
 
+    float avgLum = getAvgVal(nonMax);
+    int threshold_h = avgLum + avgLum / 2;
+    int threshold_l = avgLum / 2;
+    Mat mosaic(Size(image.cols, image.rows), image.type(), cv::Scalar(102.0, 102.0, 102.0)); //dark slate grey
     queue<Point> Q;
-    float angleAlpha = 30;
-    float angleBeta;
+    float angleAlpha = 0;
+    float angleBeta = 0;
+    float angleGamma = 0;
     //-------------------
     Size mosaicSize(tileSize, tileSize);  // Set the desired mosaic size
+    int tileR = tileSize / 2;
     int numTilesX = image.cols / mosaicSize.width;
     int numTilesY = image.rows / mosaicSize.height;
 
-    vector<vector<RotatedRect>> tileMap(numTilesX, vector<RotatedRect>(numTilesY));
+    //divide gx and gy into tiles
+    Mat gxTiles = Mat::zeros(Size(numTilesX, numTilesY), CV_8UC1);
+    Mat gyTiles = Mat::zeros(Size(numTilesX, numTilesY), CV_8UC1);
 
-    cv::Mat mosaicImage(image.size(), image.type(), cv::Scalar(0));
+    //Set up map of RotatedRects to check for overlap
+    RotatedRect emptyCell(Point2f(-1, -1), mosaicSize, 0);
+    std::vector<std::vector<RotatedRect> > tileMap(numTilesX, std::vector<RotatedRect>(numTilesY, emptyCell));
+    Size mapSize(tileMap.size(), tileMap[0].size());
 
-    // for remaining points
-    for (int i = 0; i < numTilesY; ++i) {
-        for (int j = 0; j < numTilesX; ++j) {
-            Rect tileRect(j * mosaicSize.width, i * mosaicSize.height, mosaicSize.width, mosaicSize.height);
-            //create rotatedRect, checkOverlap(RotatedRect proposedTile, vector<vector<RotatedRect>>* tileMap);
-            Point center = tileRect.br() + tileRect.tl() * 0.5;
-            RotatedRect rRect(center, mosaicSize, angleAlpha);
-            layTile(image, mosaic, tileRect, angleAlpha);
+    //fill queue & sort Queue
+    vector<tuple<float, Point>> v;
+    int it = 0;
+    for (int i = 0; i < numTilesX; i++)
+    {
+        for (int j = 0; j < numTilesY; j++)
+        {
+            Rect tileRect(i * mosaicSize.width, j * mosaicSize.height, mosaicSize.width, mosaicSize.height);
+            Mat tile = nonMax(tileRect);
+            Mat gxTile = gx(tileRect);
+            Mat gyTile = gy(tileRect);
+
+            avgLum = getAvgVal(tile);
+            if (avgLum > threshold_h)
+            {
+                v.push_back(make_tuple(avgLum, Point(i, j)));
+            }
+            //fill gxTiles and gyTiles with average change
+            float avgXChange = getAvgVal(gxTile);
+            float avgYChange = getAvgVal(gyTile);
+            gxTiles.at<uchar>(i, j) = avgXChange;
+            gyTiles.at<uchar>(i, j) = avgYChange;
         }
     }
 
-    while (!Q.empty())
+    sort(v.begin(), v.end(),
+        [](const tuple<float, Point>& a,
+            const tuple<float, Point>& b) -> bool
+        {
+            return std::get<0>(a) > std::get<0>(b);
+        });
+
+    for (int i = 0; i < v.size(); i++)
     {
-        Q.pop();
+        Q.push(get<1>(v[i]));
     }
 
+
+
+    while (!Q.empty())
+    {
+        Point temp = Q.front();
+        Q.pop();
+        if (tileMap[temp.x][temp.y].center.x == -1 && tileMap[temp.x][temp.y].center.y == -1)
+        {
+            //set tiles > threshold_h 
+            Point recCenter(temp.x * mosaicSize.width + tileR, temp.y * mosaicSize.height + tileR);
+            angleAlpha = atan2(gyTiles.at<uchar>(temp.x, temp.y), gxTiles.at<uchar>(temp.x, temp.y)) * (180 / CV_PI);
+            //angleAlpha = atan(gy.at<uchar>(recCenter.x, recCenter.y) * (180 / CV_PI) / gx.at<uchar>(recCenter.x, recCenter.y));
+            RotatedRect rRect(recCenter, mosaicSize, angleAlpha);
+            if (checkPlacementOk(rRect, tileMap, mapSize, Point(temp.x, temp.y)))
+            {
+                setTile(rRect, image, mosaic);
+                tileMap[temp.x][temp.y] = rRect; // add tile to map
+                //displayImage("inprogress", mosaic);
+                //waitKey(0);
+            }
+            //set tiles >  threshold_l 
+            int direction = 90;
+            RotatedRect newrRec = rRect;
+            //while (true)
+            //{
+            //    Point p = getPerpendicularTile(newrRec, direction, image.size());
+            //    if (p == Point(-1, -1))
+            //    {
+            //        if (direction == -90)
+            //            break;
+            //        newrRec = rRect;
+            //        direction = -90;
+            //        p = getPerpendicularTile(newrRec, direction, image.size());
+            //        if (p == Point(-1, -1))
+            //            break; //end search
+            //    }
+            //    
+            //    Point tl(p.x - rRect.size.height / 2, rRect.center.y - rRect.size.width / 2);
+            //    Rect rec(tl, rRect.size);
+            //    Mat tile = image(rec);
+            //    avgLum = getAvgVal(tile);
+            //    Point tileMapLoc((p.x - tileR) / mosaicSize.width, (p.y - tileR) / mosaicSize.height);
+            //    if (avgLum < threshold_l || (tileMap[tileMapLoc.x][tileMapLoc.y].center.x != -1 
+            //        && tileMap[tileMapLoc.x][tileMapLoc.y].center.y != -1))
+            //    { //tile less than threshold_l or tile is already set
+            //        if (direction == -90)
+            //        {
+            //            break;
+            //        }
+            //        direction = -90;
+            //        newrRec = rRect;
+            //    }
+            //    else
+            //    {
+            //        angleBeta = atan2(gxTiles.at<uchar>(tileMapLoc.x, tileMapLoc.y), gyTiles.at<uchar>(tileMapLoc.x, tileMapLoc.y)) * 180 / CV_PI;
+            //        newrRec = RotatedRect(p,mosaicSize, angleBeta);
+            //        if (checkPlacementOk(newrRec, tileMap, mapSize, tileMapLoc))
+            //        {
+            //            setTile(newrRec, image, mosaic);
+            //            tileMap[tileMapLoc.x][tileMapLoc.y] = newrRec; // mark tile, add tile to map
+            //            //displayImage("mosaicInProg", mosaic);
+            //            //waitKey(0);
+            //        }
+            //    }
+            //}
+        }
+    }
+    displayImage("inprogress", mosaic);
+    waitKey(0);
+    //set remaining tiles
+    for (int l = 0; l < numTilesX; l++)
+    {
+        for (int m = 0; m < numTilesY; m++)
+        {
+            if (tileMap[l][m].center.x == -1 && tileMap[l][m].center.y == -1) // not marked
+            {
+                Point recCenter(l * mosaicSize.width + tileR, m * mosaicSize.height + tileR);
+                angleGamma = atan2(gx.at<uchar>(l, m), gyTiles.at<uchar>(l, m)) * 180 / CV_PI;
+                RotatedRect rRect(recCenter, mosaicSize, angleGamma);
+                if (checkPlacementOk(rRect, tileMap, mapSize, Point(l, m)))
+                {
+                    setTile(rRect, image, mosaic);
+                    tileMap[l][m] = rRect; // mark tile, add tile to map
+                    //displayImage("mosaicInProg", mosaic);
+                    //waitKey(0);
+                }
+            }
+        }
+    }
 
     return mosaic;
 }
 
-//checkOverlap...not sure what this needs yet
-bool checkOverlap(Mat image, int pixRow, int pixCol, float angle) {
-    //return true if overlap
-    bool overlap = false;
 
-    return overlap;
-}
 
-void layTile(Mat image, Mat mosaic, Rect area, double angle)
+//getPerpendicularTile - rotatedRect and returns center point based on 
+// the perpendicular direction (90 or -90)
+//preconditions - 
+//postconditions - returns the default point at (-1, -1) if there is not tile in the specified direction
+Point getPerpendicularTile(RotatedRect rRect, int direction, Size s)
 {
-    int size = area.height; //using squares, could also use length
-    Mat rotatedTile;
+    Point p(-1, -1);
+    cv::Point2f pt1, pt2;
+    float theta = (rRect.angle) * CV_PI / 180.0; // Convert angle to radians
 
-    Mat tile = image(area);
-    tile = fillTileCommonColor(tile);
-    //displayImage("original", image);
-    //displayImage("tile", tile);
-    Point tileCenter(tile.cols / 2, tile.rows / 2);
-    float rotatedSize = size * sqrt(2);
-    Mat rotation_matrix = getRotationMatrix2D(tileCenter, angle, 1); //resize for rotation - size/rotatedSize
-    warpAffine(tile, rotatedTile, rotation_matrix, tile.size(), cv::INTER_LINEAR, cv::BORDER_CONSTANT, cv::Scalar(0));
-    //displayImage("rotatedTile", rotatedTile);
-    //waitKey(0);
-    rotatedTile.copyTo(mosaic(area));
+    if (direction == -90)
+    {
+        p.x = rRect.center.x - rRect.size.height * cos(theta);
+        p.y = rRect.center.y - rRect.size.width * sin(theta);
+    }
+    else
+    {
+        p.x = rRect.center.x + rRect.size.height * cos(theta);
+        p.y = rRect.center.y + rRect.size.width * sin(theta);
+    }
+
+    //check point is valid for new tile
+    if (p.x < 0 || p.y < 0 || p.x >= s.width || p.y >= s.height)
+    {
+        p.x = -1;
+        p.y = -1;
+        return p;
+    }
+    //get center point
+    p.x = (p.x / int(rRect.size.height)) * rRect.size.height + rRect.size.height / 2;
+    p.y = p.y / int(rRect.size.width) * rRect.size.width + rRect.size.width / 2;
+    if (p.x == rRect.center.x && p.y == rRect.center.y ||
+        p.x + rRect.size.height > s.width || p.y + rRect.size.width > s.height)
+    {
+        p.x = -1; p.y = -1;
+    }
+
+
+    return p;
 }
 
-// fillTileCommonColor - loops through image and finds the most common color
+//setTile - this method gets the tile area of the original image, finds the average color,
+    //then fills the corresponding rotated rect with the average color and places it on the output image
+//preconditions - requires Rect and RotatedRect to be created at specific area of image. 
+//postconditions - n/a
+void setTile(RotatedRect rRect, Mat image, Mat mosaic)
+{
+    Point tl(rRect.center.x - rRect.size.width / 2, rRect.center.y - rRect.size.height / 2);
+    Rect rec(tl, rRect.size);
+    Point vertices[4];
+    getVertices(vertices, rRect);
+    Mat tile = image(rec);
+    Scalar avgColor = mean(tile); //getStylizedColor(tile);
+    fillConvexPoly(mosaic, vertices, 4, avgColor);
+}
+
+
+
+//getAveLum - gets the average luminance of an image
+//preconditions: image should be grayscale
+//postconditions: returns average luminance in float
+float getAvgVal(Mat tile)
+{
+    float avg = 0;
+    int totalLuminance = 0;
+    for (int tx = 0; tx < tile.rows; tx++)
+    {
+        for (int ty = 0; ty < tile.cols; ty++)
+            totalLuminance += (int)tile.at<uchar>(tx, ty);
+    }
+    avg = totalLuminance / (tile.rows * tile.cols);
+    return avg;
+}
+
+//getVertices - fills a Point array of 4 with vertices from roatedRect
+//preconditions - requires Point arr[4] to be created
+//postconitions - Point arr[4] contains the vertices after method runs
+void getVertices(Point* arr, RotatedRect rRect)
+{
+    Point2f vertices2f[4];
+    rRect.points(vertices2f);
+    for (int i = 0; i < 4; ++i) {
+        arr[i] = vertices2f[i];
+    }
+}
+
+//checkOverlap - checks to see if the rotatedRect will intersect with other RotatedRects on the tileMap
+//preconditions - needs tileMap and map size since tileMap is passed by reference
+//postconditions - returns true if ok to place tile
+bool checkPlacementOk(RotatedRect proposedTile, vector<vector<RotatedRect>>& map, Size mapSize, Point mapLoc) {
+
+    vector<Point> adjacentTiles;
+    Point center = proposedTile.center;
+    Point vertices[4];
+    int size = proposedTile.size.height; //assumes tiles are square
+    getVertices(vertices, proposedTile);
+    Point adjacents[] = { Point(mapLoc.x, mapLoc.y + 1), Point(mapLoc.x, mapLoc.y - 1),
+        Point(mapLoc.x + 1, mapLoc.y),  Point(mapLoc.x - 1, mapLoc.y) };
+
+    for (int i = 0; i < 4; i++)
+    {
+        //if proposedTile is not on an edge and the adjacent tiles are not empty
+        if (adjacents[i].x >= 0 && adjacents[i].x < mapSize.width
+            && adjacents[i].y >= 0 && adjacents[i].y < mapSize.height)
+        {
+            bool mapEmpty = map[adjacents[i].x][adjacents[i].y].center.x == -1
+                && map[adjacents[i].x][adjacents[i].y].center.y == -1; //indicates RotatedRect has not been set
+            if (!mapEmpty)
+            {
+                vector<Point2f> intersect;
+                RotatedRect r = map[adjacents[i].x][adjacents[i].y];
+                rotatedRectangleIntersection(proposedTile, r, intersect);
+                int count = 0;
+                for (int index = 0; index < intersect.size(); index++)
+                {
+                    for (int v = 0; v < 4; v++)
+                    {
+                        if (int(intersect[index].x) == vertices[v].x && int(intersect[index].y) == vertices[v].y)
+                            count++;
+                    }
+                }
+                if (count != intersect.size()) //if there is an intersect that is not a vertices
+                {
+                    return false;
+                }
+            }
+        }
+    }
+
+    return true; // ok to lay tile
+}
+
+
+// getStylizedColor - loops through image and finds the most common color using discretized color options
 // preconditions: assumes image is in color
-// postconditions: returns Matt filled with common color
-Mat fillTileCommonColor(Mat in)
+// postconditions: returns Scalar color that has been discretized. 
+Scalar getStylizedColor(Mat in)
 {
     int const bins = 4;
-    Vec3b color;
+    Scalar color;
     const int buckets = (bins % 2 != 0) ? bins * 2 : bins; // ensure bin is multple of 2
     int dims[] = { buckets, buckets, buckets };
     Mat hist(3, dims, CV_32S, Scalar::all(0)); // 3D histogram initialized to zero
@@ -479,18 +538,11 @@ Mat fillTileCommonColor(Mat in)
         }
     }
 
-    int cRed = winner[red] * bucketSize + bucketSize / 2;
-    int cGreen = winner[green] * bucketSize + bucketSize / 2;
-    int cBlue = winner[blue] * bucketSize + bucketSize / 2;
+    float cRed = winner[red] * bucketSize + bucketSize / 2;
+    float cGreen = winner[green] * bucketSize + bucketSize / 2;
+    float cBlue = winner[blue] * bucketSize + bucketSize / 2;
 
-    color = { saturate_cast<uchar>(cRed), saturate_cast<uchar>(cGreen), saturate_cast<uchar>(cBlue) };
+    color = { cRed, cGreen, cBlue };
 
-    //fill tile with common color
-    Mat newTile = Mat::zeros(in.size(), CV_8UC3);
-    for (int r = 0; r < in.rows; r++) {
-        for (int c = 0; c < in.cols; c++) {
-            newTile.at<Vec3b>(r, c) = color;
-        }
-    }
-    return newTile;
+    return color;
 }
