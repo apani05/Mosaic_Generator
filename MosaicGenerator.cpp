@@ -18,10 +18,11 @@ Mat calcNonMax(Mat image);
 Mat placeTiles(Mat image, Mat nonMax, Mat gx, Mat gy, int tileSize);
 //helper methods
 void setTile(RotatedRect rRect, Mat image, Mat mosaic);
+RotatedRect positionTile(RotatedRect rRect, vector<vector<RotatedRect>>& map, Size mapSize, Point mapLoc);
+RotatedRect shift(int quadrant, int startingPoint, RotatedRect rRect, vector<vector<RotatedRect>>& map, Size mapSize, Point mapLoc);
 bool checkPlacementOk(RotatedRect tile, vector<vector<RotatedRect>>& map, Size mapSize, Point mapLoc);
-Point getPerpendicularTile(RotatedRect rRect, int direction, Size s);
+Point getPerpendicularTile(RotatedRect rRect, int direction, Size s, float angleAlpha);
 void displayImage(string name, Mat image);
-Scalar getStylizedColor(Mat in);
 float getAvgVal(Mat tile);
 void getVertices(Point* arr, RotatedRect rRect);
 
@@ -51,7 +52,7 @@ int main(int argc, char* argv[]) {
     Mat nonMax = calcNonMax(gvf);
 
     // Step 7-23: Calculate tile Angles and place tiles  
-    int const tilesize = 5; // 1 pixel X 1 pixel
+    int const tilesize = 4; // 1 pixel X 1 pixel
     Mat mosaic = placeTiles(image, nonMax, gx, gy, tilesize);
 
     // Display Images
@@ -208,8 +209,8 @@ Mat calcNonMax(Mat image) {
 Mat placeTiles(Mat image, Mat nonMax, Mat gx, Mat gy, int tileSize) {
 
     float avgLum = getAvgVal(nonMax);
-    int threshold_h = avgLum + avgLum / 2;
-    int threshold_l = avgLum / 2;
+    int threshold_h = avgLum * .80;
+    int threshold_l = avgLum * .20;
     Mat mosaic(Size(image.cols, image.rows), image.type(), cv::Scalar(102.0, 102.0, 102.0)); //dark slate grey
     queue<Point> Q;
     float angleAlpha = 0;
@@ -217,7 +218,7 @@ Mat placeTiles(Mat image, Mat nonMax, Mat gx, Mat gy, int tileSize) {
     float angleGamma = 0;
     //-------------------
     Size mosaicSize(tileSize, tileSize);  // Set the desired mosaic size
-    int tileR = tileSize / 2;
+    float tileR = tileSize / 2;
     int numTilesX = image.cols / mosaicSize.width;
     int numTilesY = image.rows / mosaicSize.height;
 
@@ -255,6 +256,7 @@ Mat placeTiles(Mat image, Mat nonMax, Mat gx, Mat gy, int tileSize) {
         }
     }
 
+    //sort vector from largest gradient to smallest
     sort(v.begin(), v.end(),
         [](const tuple<float, Point>& a,
             const tuple<float, Point>& b) -> bool
@@ -278,78 +280,83 @@ Mat placeTiles(Mat image, Mat nonMax, Mat gx, Mat gy, int tileSize) {
             //set tiles > threshold_h 
             Point recCenter(temp.x * mosaicSize.width + tileR, temp.y * mosaicSize.height + tileR);
             angleAlpha = atan2(gyTiles.at<uchar>(temp.x, temp.y), gxTiles.at<uchar>(temp.x, temp.y)) * (180 / CV_PI);
-            //angleAlpha = atan(gy.at<uchar>(recCenter.x, recCenter.y) * (180 / CV_PI) / gx.at<uchar>(recCenter.x, recCenter.y));
-            RotatedRect rRect(recCenter, mosaicSize, angleAlpha);
-            if (checkPlacementOk(rRect, tileMap, mapSize, Point(temp.x, temp.y)))
+            RotatedRect rRect(recCenter, mosaicSize, angleAlpha); //initial tile
+            RotatedRect rSet = positionTile(rRect, tileMap, mapSize, Point(temp.x, temp.y)); //shifted tile
+            //if (checkPlacementOk(rRect, tileMap, mapSize, Point(temp.x, temp.y)))
+            if (rSet.center.x != -1 && rSet.center.y != -1)
             {
-                setTile(rRect, image, mosaic);
-                tileMap[temp.x][temp.y] = rRect; // add tile to map
-                //displayImage("inprogress", mosaic);
+                setTile(rSet, image, mosaic);
+                tileMap[temp.x][temp.y] = rSet; // add tile to map
+                //displayImage("mosaicInProg", mosaic);
                 //waitKey(0);
             }
             //set tiles >  threshold_l 
             int direction = 90;
             RotatedRect newrRec = rRect;
-            //while (true)
-            //{
-            //    Point p = getPerpendicularTile(newrRec, direction, image.size());
-            //    if (p == Point(-1, -1))
-            //    {
-            //        if (direction == -90)
-            //            break;
-            //        newrRec = rRect;
-            //        direction = -90;
-            //        p = getPerpendicularTile(newrRec, direction, image.size());
-            //        if (p == Point(-1, -1))
-            //            break; //end search
-            //    }
-            //    
-            //    Point tl(p.x - rRect.size.height / 2, rRect.center.y - rRect.size.width / 2);
-            //    Rect rec(tl, rRect.size);
-            //    Mat tile = image(rec);
-            //    avgLum = getAvgVal(tile);
-            //    Point tileMapLoc((p.x - tileR) / mosaicSize.width, (p.y - tileR) / mosaicSize.height);
-            //    if (avgLum < threshold_l || (tileMap[tileMapLoc.x][tileMapLoc.y].center.x != -1 
-            //        && tileMap[tileMapLoc.x][tileMapLoc.y].center.y != -1))
-            //    { //tile less than threshold_l or tile is already set
-            //        if (direction == -90)
-            //        {
-            //            break;
-            //        }
-            //        direction = -90;
-            //        newrRec = rRect;
-            //    }
-            //    else
-            //    {
-            //        angleBeta = atan2(gxTiles.at<uchar>(tileMapLoc.x, tileMapLoc.y), gyTiles.at<uchar>(tileMapLoc.x, tileMapLoc.y)) * 180 / CV_PI;
-            //        newrRec = RotatedRect(p,mosaicSize, angleBeta);
-            //        if (checkPlacementOk(newrRec, tileMap, mapSize, tileMapLoc))
-            //        {
-            //            setTile(newrRec, image, mosaic);
-            //            tileMap[tileMapLoc.x][tileMapLoc.y] = newrRec; // mark tile, add tile to map
-            //            //displayImage("mosaicInProg", mosaic);
-            //            //waitKey(0);
-            //        }
-            //    }
-            //}
+            while (true)
+            {
+                Point p = getPerpendicularTile(newrRec, direction, image.size(), angleAlpha);
+                if (p == Point(-1, -1))
+                {
+                    if (direction == -90)
+                        break;
+                    newrRec = rRect;
+                    direction = -90;
+                    p = getPerpendicularTile(newrRec, direction, image.size(), angleAlpha);
+                    if (p == Point(-1, -1))
+                        break; //end search
+                }
+
+                Point tl(p.x - rRect.size.height / 2.0, rRect.center.y - rRect.size.width / 2.0);
+                Rect rec(tl, rRect.size);
+                Mat tile = nonMax(rec);
+                avgLum = getAvgVal(tile);
+                Point tileMapLoc((p.x - tileR) / mosaicSize.width, (p.y - tileR) / mosaicSize.height);
+                if (avgLum > threshold_l || (tileMap[tileMapLoc.x][tileMapLoc.y].center.x != -1
+                    && tileMap[tileMapLoc.x][tileMapLoc.y].center.y != -1))
+                { //tile less than threshold_l or tile is already set
+                    if (direction == -90)
+                    {
+                        break;
+                    }
+                    direction = -90;
+                    newrRec = rRect;
+                }
+                else
+                {
+                    angleBeta = atan2(gxTiles.at<uchar>(tileMapLoc.x, tileMapLoc.y), gyTiles.at<uchar>(tileMapLoc.x, tileMapLoc.y)) * 180 / CV_PI;
+                    newrRec = RotatedRect(p, mosaicSize, angleBeta);
+                    rSet = positionTile(rRect, tileMap, mapSize, Point(temp.x, temp.y));
+                    //if (checkPlacementOk(newrRec, tileMap, mapSize, tileMapLoc))
+                    if (rSet.center.x != -1 && rSet.center.y != -1)
+                    {
+                        setTile(rSet, image, mosaic);
+                        tileMap[tileMapLoc.x][tileMapLoc.y] = rSet; // mark tile, add tile to map
+                        //displayImage("mosaicInProg", mosaic);
+                        //waitKey(0);
+                    }
+                }
+            }
         }
     }
-    displayImage("inprogress", mosaic);
-    waitKey(0);
-    //set remaining tiles
+    //displayImage("mosaicInProg", mosaic);
+    //waitKey(0);
+   //set remaining tiles
     for (int l = 0; l < numTilesX; l++)
     {
         for (int m = 0; m < numTilesY; m++)
         {
-            if (tileMap[l][m].center.x == -1 && tileMap[l][m].center.y == -1) // not marked
+            if (tileMap[m][l].center.x == -1 && tileMap[m][l].center.y == -1) // not marked
             {
-                Point recCenter(l * mosaicSize.width + tileR, m * mosaicSize.height + tileR);
-                angleGamma = atan2(gx.at<uchar>(l, m), gyTiles.at<uchar>(l, m)) * 180 / CV_PI;
+                Point recCenter(m * mosaicSize.height + tileR, l * mosaicSize.width + tileR);
+                angleGamma = atan2(gx.at<uchar>(m, l), gyTiles.at<uchar>(m, l)) * 180 / CV_PI;
                 RotatedRect rRect(recCenter, mosaicSize, angleGamma);
-                if (checkPlacementOk(rRect, tileMap, mapSize, Point(l, m)))
+                RotatedRect rSet = positionTile(rRect, tileMap, mapSize, Point(m, l));
+                //if (checkPlacementOk(rRect, tileMap, mapSize, Point(m, l)))
+                if (rSet.center.x != -1 && rSet.center.y != -1)
                 {
-                    setTile(rRect, image, mosaic);
-                    tileMap[l][m] = rRect; // mark tile, add tile to map
+                    setTile(rSet, image, mosaic);
+                    tileMap[m][l] = rSet; // mark tile, add tile to map
                     //displayImage("mosaicInProg", mosaic);
                     //waitKey(0);
                 }
@@ -360,17 +367,170 @@ Mat placeTiles(Mat image, Mat nonMax, Mat gx, Mat gy, int tileSize) {
     return mosaic;
 }
 
+//positionTile - attempts to find a good center for rRect. If no suitable placement found
+// function returns rRect at center -1, -1
+RotatedRect positionTile(RotatedRect rRect, vector<vector<RotatedRect>>& map, Size mapSize, Point mapLoc)
+{
+    RotatedRect temp(Point(-1, -1), rRect.size, rRect.angle);
+    if (checkPlacementOk(rRect, map, mapSize, mapLoc))
+        temp = rRect;
+    else
+    {
+        //Get quadrant to determine shift direction
+        // 0 | 1
+        // 2 | 3
+        int midX = mapSize.width / 2;
+        int midY = mapSize.height / 2;
+        int quadrant = 0;
+        if (mapLoc.x > midX && mapLoc.y < midY)
+            quadrant = 1;
+        else if (mapLoc.x < midX && mapLoc.y > midY)
+            quadrant = 2;
+        else if (mapLoc.x > midX && mapLoc.y > midY)
+            quadrant = 3;
+
+        Point adjacents[] = { Point(mapLoc.x, mapLoc.y + 1), Point(mapLoc.x, mapLoc.y - 1),
+        Point(mapLoc.x + 1, mapLoc.y),  Point(mapLoc.x - 1, mapLoc.y),
+        Point(mapLoc.x + 1, mapLoc.y + 1), Point(mapLoc.x - 1, mapLoc.y - 1),
+        Point(mapLoc.x - 1, mapLoc.y + 1), Point(mapLoc.x + 1, mapLoc.y - 1) };
+        /*
+        0 - Bottom
+        1 - Top
+        2 - Right
+        3 - Left
+        4 - Bottom, Right
+        5 - Top, Left
+        6 - Bottom, Left
+        7 - Top, Right
+        */
+        int startingPoint = 0;
+        for (int i = 0; i < 8; i++) //each tile to check for overlap
+        {
+            //if proposedTile is not on an edge and the adjacent tiles are not empty
+            if (adjacents[i].x >= 0 && adjacents[i].x < mapSize.width
+                && adjacents[i].y >= 0 && adjacents[i].y < mapSize.height)
+            {
+                bool mapEmpty = map[adjacents[i].x][adjacents[i].y].center.x == -1
+                    && map[adjacents[i].x][adjacents[i].y].center.y == -1; //indicates RotatedRect has not been set
+                if (!mapEmpty)
+                {
+                    vector<Point2f> intersect;
+                    RotatedRect r = map[adjacents[i].x][adjacents[i].y];
+                    rotatedRectangleIntersection(rRect, r, intersect);
+                    if (intersect.size() > 2) //exclude point and line contacts
+                    {
+                        startingPoint = i;
+                        break;
+                    }
+                }
+            }
+        }
+        temp = shift(quadrant, startingPoint, rRect, map, mapSize, mapLoc);
+
+    }
+
+    return temp;
+}
+
+RotatedRect shift(int quadrant, int startingPoint, RotatedRect rRect, vector<vector<RotatedRect>>& map, Size mapSize, Point mapLoc)
+{
+    RotatedRect temp(Point(-1, -1), rRect.size, rRect.angle);
+    //set initial locations
+    int R0 = mapLoc.y * rRect.size.height;
+    int R1 = mapLoc.y * rRect.size.height + rRect.size.height;
+    int C0 = mapLoc.x * rRect.size.width;
+    int C1 = mapLoc.x * rRect.size.width + rRect.size.width;
+
+    //if edge of map, don't look
+    if (R0 == 0 || C0 == 0 || R1 == mapSize.height || C1 == mapSize.width)
+        return temp;
+    /*
+    0 - Bottom
+    1 - Top
+    2 - Right
+    3 - Left
+    4 - Bottom, Right
+    5 - Top, Left
+    6 - Bottom, Left
+    7 - Top, Right
+    */
+    if ((startingPoint == 0 && quadrant == 2) || (startingPoint == 2 && quadrant == 0)
+        || (startingPoint == 2 && quadrant == 1) || startingPoint == 4)
+    { //R-L, B-T
+        for (int r = R1; r > R0; r--)
+        {
+            for (int c = C1; c > C0; c--)
+            {
+                temp.center.x = c;
+                temp.center.y = r;
+                if (checkPlacementOk(temp, map, mapSize, mapLoc))
+                    return temp;
+            }
+        }
+    }
+    else if ((startingPoint == 1 && quadrant == 0) || (startingPoint == 1 && quadrant == 2)
+        || (startingPoint == 2 && quadrant == 3) || startingPoint == 7)
+    {//R-L, T-B
+        for (int c = C0; c < C1; c++)
+        {
+            for (int r = R1; r > R0; r--)
+            {
+                temp.center.x = c;
+                temp.center.y = r;
+                if (checkPlacementOk(temp, map, mapSize, mapLoc))
+                    return temp;
+            }
+        }
+    }
+    else if ((startingPoint == 3 && quadrant == 2) || (startingPoint == 3 && quadrant == 3)
+        || (startingPoint == 1 && quadrant == 3) || startingPoint == 5)
+    {//L-R, T-B
+        for (int c = C0; c < C1; c++)
+        {
+            for (int r = R0; r < R1; r++)
+            {
+                temp.center.x = c;
+                temp.center.y = r;
+                if (checkPlacementOk(temp, map, mapSize, mapLoc))
+                    return temp;
+            }
+        }
+    }
+    else if ((startingPoint == 3 && quadrant == 0) || (startingPoint == 3 && quadrant == 1)
+        || (startingPoint == 0 && quadrant == 3) || startingPoint == 6)
+    {//L-R, B-T
+        for (int c = C1; c > C0; c--)
+        {
+            for (int r = R0; r < R1; r++)
+            {
+                temp.center.x = c;
+                temp.center.y = r;
+                if (checkPlacementOk(temp, map, mapSize, mapLoc))
+                    return temp;
+            }
+        }
+    }
+    else
+    {
+        temp.center.x = -1;
+        temp.center.y = -1;
+    }
+    temp.center.x = -1;
+    temp.center.y = -1;
+    return temp;
+}
+
 
 
 //getPerpendicularTile - rotatedRect and returns center point based on 
 // the perpendicular direction (90 or -90)
 //preconditions - 
 //postconditions - returns the default point at (-1, -1) if there is not tile in the specified direction
-Point getPerpendicularTile(RotatedRect rRect, int direction, Size s)
+Point getPerpendicularTile(RotatedRect rRect, int direction, Size s, float angleAlpha)
 {
     Point p(-1, -1);
     cv::Point2f pt1, pt2;
-    float theta = (rRect.angle) * CV_PI / 180.0; // Convert angle to radians
+    float theta = (angleAlpha)*CV_PI / 180.0; // Convert angle to radians
 
     if (direction == -90)
     {
@@ -409,12 +569,12 @@ Point getPerpendicularTile(RotatedRect rRect, int direction, Size s)
 //postconditions - n/a
 void setTile(RotatedRect rRect, Mat image, Mat mosaic)
 {
-    Point tl(rRect.center.x - rRect.size.width / 2, rRect.center.y - rRect.size.height / 2);
+    Point2f tl(rRect.center.x - rRect.size.width / 2.0, rRect.center.y - rRect.size.height / 2.0);
     Rect rec(tl, rRect.size);
     Point vertices[4];
     getVertices(vertices, rRect);
     Mat tile = image(rec);
-    Scalar avgColor = mean(tile); //getStylizedColor(tile);
+    Scalar avgColor = mean(tile);
     fillConvexPoly(mosaic, vertices, 4, avgColor);
 }
 
@@ -453,15 +613,17 @@ void getVertices(Point* arr, RotatedRect rRect)
 //postconditions - returns true if ok to place tile
 bool checkPlacementOk(RotatedRect proposedTile, vector<vector<RotatedRect>>& map, Size mapSize, Point mapLoc) {
 
-    vector<Point> adjacentTiles;
+    //vector<Point> adjacentTiles;
     Point center = proposedTile.center;
     Point vertices[4];
     int size = proposedTile.size.height; //assumes tiles are square
     getVertices(vertices, proposedTile);
     Point adjacents[] = { Point(mapLoc.x, mapLoc.y + 1), Point(mapLoc.x, mapLoc.y - 1),
-        Point(mapLoc.x + 1, mapLoc.y),  Point(mapLoc.x - 1, mapLoc.y) };
+        Point(mapLoc.x + 1, mapLoc.y),  Point(mapLoc.x - 1, mapLoc.y),
+        Point(mapLoc.x + 1, mapLoc.y + 1), Point(mapLoc.x - 1, mapLoc.y - 1),
+        Point(mapLoc.x - 1, mapLoc.y + 1), Point(mapLoc.x + 1, mapLoc.y - 1) };
 
-    for (int i = 0; i < 4; i++)
+    for (int i = 0; i < 8; i++) //each tile to check for overlap
     {
         //if proposedTile is not on an edge and the adjacent tiles are not empty
         if (adjacents[i].x >= 0 && adjacents[i].x < mapSize.width
@@ -474,19 +636,8 @@ bool checkPlacementOk(RotatedRect proposedTile, vector<vector<RotatedRect>>& map
                 vector<Point2f> intersect;
                 RotatedRect r = map[adjacents[i].x][adjacents[i].y];
                 rotatedRectangleIntersection(proposedTile, r, intersect);
-                int count = 0;
-                for (int index = 0; index < intersect.size(); index++)
-                {
-                    for (int v = 0; v < 4; v++)
-                    {
-                        if (int(intersect[index].x) == vertices[v].x && int(intersect[index].y) == vertices[v].y)
-                            count++;
-                    }
-                }
-                if (count != intersect.size()) //if there is an intersect that is not a vertices
-                {
+                if (intersect.size() > 1) //exclude point contacts
                     return false;
-                }
             }
         }
     }
@@ -495,54 +646,8 @@ bool checkPlacementOk(RotatedRect proposedTile, vector<vector<RotatedRect>>& map
 }
 
 
-// getStylizedColor - loops through image and finds the most common color using discretized color options
-// preconditions: assumes image is in color
-// postconditions: returns Scalar color that has been discretized. 
-Scalar getStylizedColor(Mat in)
-{
-    int const bins = 4;
-    Scalar color;
-    const int buckets = (bins % 2 != 0) ? bins * 2 : bins; // ensure bin is multple of 2
-    int dims[] = { buckets, buckets, buckets };
-    Mat hist(3, dims, CV_32S, Scalar::all(0)); // 3D histogram initialized to zero
-    int bucketSize = 256 / buckets;
-    int x, y, z;
 
-    //fill histogram
-    Mat result = in.clone();
-    for (int r = 0; r < result.rows; r++) {
-        for (int c = 0; c < result.cols; c++) {
-            color = in.at<Vec3b>(r, c); //get color
-            int num = *result.ptr<uchar>(c);
-            x = color[red] / bucketSize;
-            y = color[green] / bucketSize;
-            z = color[blue] / bucketSize;
-            //increase bin in histogram
-            hist.at<int>(x, y, z) = hist.at<int>(x, y, z) + 1;
-        }
-    }
 
-    // get color with highest # of bin votes
-    int most = 0;
-    std::vector<int> winner = { 0, 0, 0 };
-    for (int l = 0; l <= 3; l++) {
-        for (int w = 0; w <= 3; w++) {
-            for (int h = 0; h <= 3; h++)
-            {
-                if (most < hist.at<int>(l, w, h))
-                {
-                    most = hist.at<int>(l, w, h);
-                    winner = { l, w, h };
-                }
-            }
-        }
-    }
 
-    float cRed = winner[red] * bucketSize + bucketSize / 2;
-    float cGreen = winner[green] * bucketSize + bucketSize / 2;
-    float cBlue = winner[blue] * bucketSize + bucketSize / 2;
 
-    color = { cRed, cGreen, cBlue };
 
-    return color;
-}
