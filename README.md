@@ -13,6 +13,7 @@ To evaluate the project we will use the same pictures used in the paper and try 
 
 ### Github link: 
 apani05/Mosaic_Generator (github.com)
+Final Presentation Link: https://youtu.be/R7m6wKitEjo
 
 ### Schedule:
 1. May 1, 2023 - Proposal submission.
