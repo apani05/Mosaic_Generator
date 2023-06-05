@@ -12,7 +12,7 @@ The program will input an image and output that image with a mosaic transformati
 To evaluate the project we will use the same pictures used in the paper and try to run them through our algorithm to create our own mosaics. We can then compare the results visually. 
 
 ### Github link: 
-apani05/Mosaic_Generator (github.com)
+apani05/Mosaic_Generator (github.com)__
 Final Presentation Link: https://youtu.be/R7m6wKitEjo
 
 ### Schedule:
