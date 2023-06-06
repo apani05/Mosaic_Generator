@@ -1,5 +1,6 @@
 //MosaicGenerator.cpp - inputs image and outputs an image with a mosaic tranformation. 
 // Aishwarya Pani and Tabitha Roemish
+// completed June 5, 2023
 
 #include <opencv2/opencv.hpp>
 #include <opencv2/core/core.hpp>
