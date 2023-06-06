@@ -27,7 +27,6 @@ float getAvgVal(Mat tile);
 void getVertices(Point* arr, RotatedRect rRect);
 
 
-
 //main - main program reads in an image and outputs a mosaic-ized image
 //preconditions: image must be in same directory
 //postconditions: image is saved in same directory as code
@@ -139,10 +138,7 @@ Mat calcGVFField(Mat image, Mat gx, Mat gy) {
         for (int j = 0; j < image.cols; j++) {
             Scalar xval = gx.at<uchar>(i, j); // Notice <uchar> not float
             Scalar yval = gy.at<uchar>(i, j);
-            float xx = xval.val[0];
-            float yy = yval.val[0];
             gvf.at<uchar>(i, j) = (xval.val[0], yval.val[0]);
-            //mygx.at<uchar>(i, j) = (xval.val[0], yval.val[0]);
         }
     }
     //displayImage("gx", gx);
@@ -269,8 +265,7 @@ Mat placeTiles(Mat image, Mat nonMax, Mat gx, Mat gy, int tileSize) {
         Q.push(get<1>(v[i]));
     }
 
-
-
+    //start placing edge and adjacent tiles
     while (!Q.empty())
     {
         Point temp = Q.front();
@@ -294,7 +289,7 @@ Mat placeTiles(Mat image, Mat nonMax, Mat gx, Mat gy, int tileSize) {
             int direction = 90;
             RotatedRect newrRec = rRect;
             while (true)
-            {
+            {//start looking for adjacent tiles perpendicular to edge tile
                 Point p = getPerpendicularTile(newrRec, direction, image.size(), angleAlpha);
                 if (p == Point(-1, -1))
                 {
@@ -644,10 +639,6 @@ bool checkPlacementOk(RotatedRect proposedTile, vector<vector<RotatedRect>>& map
 
     return true; // ok to lay tile
 }
-
-
-
-
 
 
 
