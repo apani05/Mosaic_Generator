@@ -142,13 +142,12 @@ Mat calcGradient(Mat image)
     return robert_image;
 }
 
-// calcGVFField - This function calculates the gradient vector flow for each tile
+// calcGVFField - This function calculates the change in the x and y coordinates for each pixel
 /* Steps:
    1. Calculate the gradient in x and y directions using Scharr function
-   2. Compute the GVF for each pixel
-   3. Return the calculated GVF */
+   2. Return the calculated GVF image which contains the gradient change in x and y combined*/
 // Preconditions: The input image, gx, and gy are valid and initialized Mat objects.
-// Postconditions: Returns a Mat object representing the gradient vector flow field.
+// Postconditions: Returns a Mat object representing the gradient changes in x and y coordinates.
 
 Mat calcGVFField(Mat image, Mat gx, Mat gy)
 {
@@ -431,6 +430,7 @@ RotatedRect positionTile(RotatedRect rRect, vector<vector<RotatedRect>>& map, Si
         Point(mapLoc.x + 1, mapLoc.y + 1), Point(mapLoc.x - 1, mapLoc.y - 1),
         Point(mapLoc.x - 1, mapLoc.y + 1), Point(mapLoc.x + 1, mapLoc.y - 1) };
         /*
+        startingPoint indices:
         0 - Bottom
         1 - Top
         2 - Right
