@@ -3,7 +3,7 @@
 ### *Names: Aishwarya Pani and Tabitha Roemish*
 
 ### Plan: 
-We plan to recreate the pseudo code lined out in the paper in C++ using what we can from the OpenCV library and writing the rest. We want to add a trackbar for the tile size. At this time we do not have extensions to propose because recreating the algorithm appears to be challenging but we will reevaluate and propose an extension if possible.
+We plan to recreate the pseudo code lined out in the paper in C++ using what we can from the OpenCV library and writing the rest. At this time we do not have extensions to propose because recreating the algorithm appears to be challenging but we will reevaluate and propose an extension if possible.
 
 ### Input and Output: 
 The program will input an image and output that image with a mosaic transformation. 
@@ -12,7 +12,9 @@ The program will input an image and output that image with a mosaic transformati
 To evaluate the project we will use the same pictures used in the paper and try to run them through our algorithm to create our own mosaics. We can then compare the results visually. 
 
 ### Github link: 
-apani05/Mosaic_Generator (github.com)__
+apani05/Mosaic_Generator (github.com)
+
+### Youtube link: 
 Final Presentation Link: https://youtu.be/R7m6wKitEjo
 
 ### Schedule:
